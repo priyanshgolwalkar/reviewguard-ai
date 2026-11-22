@@ -1,0 +1,6 @@
+{
+  "name": "ReviewGuard AI",
+  "description": "Agentic AI-powered Business Reputation Management platform with sentiment analytics, critical review alerts, CSV import, and Gemini-powered response drafting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,595 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitive Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isBootstrappedSuperAdminEmail() {
+      return isVerifiedUser() && request.auth.token.email.lower() == 'priyanshgolwalkar@gmail.com';
+    }
+
+    function isSuperAdmin() {
+      return isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isAccountActive() {
+      return !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        || !('status' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+        || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+
+    // Validation Blueprint: PlatformAdmin
+    function isValidAdminDoc(data) {
+      return data.keys().hasAll(['uid', 'email', 'provisionedBy', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'provisionedBy', 'createdAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.provisionedBy is string && data.provisionedBy.size() >= 1 && data.provisionedBy.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
+    // Validation Blueprint: PlatformSettings
+    function isValidPlatformSettings(data) {
+      return data.keys().hasAll([
+          'platformName', 'allowNewBusinessRegistration', 'maxBusinessesPerOwner',
+          'aiAnalysisEnabled', 'maintenanceMode', 'updatedBy', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'platformName', 'allowNewBusinessRegistration', 'maxBusinessesPerOwner',
+          'aiAnalysisEnabled', 'maintenanceMode', 'updatedBy', 'updatedAt'
+        ])
+        && data.platformName is string && data.platformName.size() >= 2 && data.platformName.size() <= 100
+        && data.allowNewBusinessRegistration is bool
+        && data.maxBusinessesPerOwner is int && data.maxBusinessesPerOwner >= 1 && data.maxBusinessesPerOwner <= 100
+        && data.aiAnalysisEnabled is bool
+        && data.maintenanceMode is bool
+        && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: UserProfile
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'status', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.role in ['SUPER_ADMIN', 'BUSINESS_OWNER', 'BUSINESS_MANAGER']
+        && data.status in ['active', 'suspended']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: Business
+    function isValidBusiness(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'category', 'city', 'address', 'description', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'name', 'category', 'city', 'address', 'description', 'status', 'createdAt', 'updatedAt'])
+        && isValidId(data.ownerId)
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 120
+        && data.category is string && data.category.size() >= 2 && data.category.size() <= 60
+        && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+        && data.address is string && data.address.size() >= 2 && data.address.size() <= 240
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 1200
+        && data.status in ['active', 'suspended']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: BusinessMember
+    function isValidBusinessMember(data) {
+      return data.keys().hasAll([
+          'businessId', 'businessName', 'ownerId', 'userId', 'email', 'displayName',
+          'role', 'canApproveReplies', 'status', 'invitedBy', 'inviteId', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'businessId', 'businessName', 'ownerId', 'userId', 'email', 'displayName',
+          'role', 'canApproveReplies', 'status', 'invitedBy', 'inviteId', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.businessId)
+        && data.businessName is string && data.businessName.size() >= 2 && data.businessName.size() <= 120
+        && isValidId(data.ownerId)
+        && isValidId(data.userId)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.role in ['BUSINESS_OWNER', 'BUSINESS_MANAGER']
+        && data.canApproveReplies is bool
+        && data.status in ['active', 'revoked']
+        && data.invitedBy is string && data.invitedBy.size() >= 1 && data.invitedBy.size() <= 128
+        && isValidId(data.inviteId)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: BusinessInvite
+    function isValidBusinessInvite(data) {
+      return data.keys().hasAll([
+          'businessId', 'businessName', 'ownerId', 'email', 'role',
+          'canApproveReplies', 'status', 'invitedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'businessId', 'businessName', 'ownerId', 'email', 'role',
+          'canApproveReplies', 'status', 'invitedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.businessId)
+        && data.businessName is string && data.businessName.size() >= 2 && data.businessName.size() <= 120
+        && isValidId(data.ownerId)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.role == 'BUSINESS_MANAGER'
+        && data.canApproveReplies is bool
+        && data.status in ['pending', 'accepted', 'revoked']
+        && data.invitedBy is string && data.invitedBy.size() >= 1 && data.invitedBy.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: Review
+    function isValidReview(data, businessId) {
+      return data.keys().hasAll([
+          'ownerId', 'businessId', 'authorName', 'rating', 'text', 'reviewDate',
+          'source', 'sentiment', 'sentimentScore', 'categories', 'isCritical',
+          'criticalReason', 'aiSummary', 'aiDraftResponse', 'responseTone',
+          'responseStatus', 'publishedResponse', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'businessId', 'authorName', 'rating', 'text', 'reviewDate',
+          'source', 'sentiment', 'sentimentScore', 'categories', 'isCritical',
+          'criticalReason', 'aiSummary', 'aiDraftResponse', 'responseTone',
+          'responseStatus', 'publishedResponse', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.businessId is string && data.businessId == businessId
+        && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 100
+        && data.rating is int && data.rating >= 1 && data.rating <= 5
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 4000
+        && data.reviewDate is string && data.reviewDate.size() >= 4 && data.reviewDate.size() <= 40
+        && data.source in ['manual', 'csv', 'google', 'yelp', 'tripadvisor', 'other']
+        && data.sentiment in ['positive', 'neutral', 'negative', 'pending']
+        && data.sentimentScore is number && data.sentimentScore >= -1.0 && data.sentimentScore <= 1.0
+        && data.categories is list && data.categories.size() <= 8
+        && (data.categories.size() == 0 || (data.categories[0] is string && data.categories[0].size() <= 60))
+        && data.isCritical is bool
+        && data.criticalReason is string && data.criticalReason.size() <= 300
+        && data.aiSummary is string && data.aiSummary.size() <= 500
+        && data.aiDraftResponse is string && data.aiDraftResponse.size() <= 3000
+        && data.responseTone in ['professional', 'warm', 'concise', 'apologetic']
+        && data.responseStatus in ['unanswered', 'drafted', 'published', 'rejected']
+        && data.publishedResponse is string && data.publishedResponse.size() <= 3000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Tenant & Master Gate Helpers
+    function isParentBusinessOwner(businessId) {
+      return exists(/databases/$(database)/documents/businesses/$(businessId))
+        && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid;
+    }
+
+    function isBusinessActive(businessId) {
+      return exists(/databases/$(database)/documents/businesses/$(businessId))
+        && (
+          !('status' in get(/databases/$(database)/documents/businesses/$(businessId)).data)
+          || get(/databases/$(database)/documents/businesses/$(businessId)).data.status == 'active'
+        );
+    }
+
+    function isActiveBusinessMember(businessId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/businesses/$(businessId))
+        && exists(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid))
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.businessId == businessId
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.ownerId == get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.role == 'BUSINESS_MANAGER'
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.status == 'active';
+    }
+
+    function isActiveBusinessOwner(businessId) {
+      return isParentBusinessOwner(businessId)
+        && exists(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid))
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.businessId == businessId
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.ownerId == request.auth.uid
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.role == 'BUSINESS_OWNER'
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.status == 'active';
+    }
+
+    function canManagerApproveReplies(businessId) {
+      return isActiveBusinessMember(businessId)
+        && get(/databases/$(database)/documents/business_members/$(businessId + '__' + request.auth.uid)).data.canApproveReplies == true;
+    }
+
+    function hasTenantAccess(businessId) {
+      return isParentBusinessOwner(businessId) || isActiveBusinessMember(businessId) || isSuperAdmin();
+    }
+
+    // Collection: /admins/{userId}
+    match /admins/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isSuperAdmin());
+      allow list: if isSuperAdmin();
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidAdminDoc(incoming())
+        && incoming().uid == userId
+        && incoming().createdAt == request.time
+        && ((isBootstrappedSuperAdminEmail() && userId == request.auth.uid) || isSuperAdmin());
+      allow update: if false;
+      allow delete: if isSuperAdmin() && isValidId(userId) && userId != request.auth.uid;
+    }
+
+    // Collection: /platform_settings/{settingId}
+    match /platform_settings/{settingId} {
+      allow get: if isSignedIn() && isValidId(settingId);
+      allow list: if isSuperAdmin();
+      allow create, update: if isSuperAdmin()
+        && isValidId(settingId)
+        && isValidPlatformSettings(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // Collection: /users/{userId}
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isSuperAdmin());
+      allow list: if isSuperAdmin();
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().uid == userId
+        && incoming().status == 'active'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          incoming().role in ['BUSINESS_OWNER', 'BUSINESS_MANAGER']
+          || (incoming().role == 'SUPER_ADMIN' && (isBootstrappedSuperAdminEmail() || isSuperAdmin()))
+        );
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            isSuperAdmin()
+            && (incoming().role != 'SUPER_ADMIN' || exists(/databases/$(database)/documents/admins/$(userId)))
+            && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'status', 'displayName', 'updatedAt'])
+          )
+          || (
+            request.auth.uid == userId
+            && (
+              // Normal owner/user update: cannot modify role or status
+              (
+                ('role' in existing())
+                && incoming().role == existing().role
+                && (!('status' in existing()) || incoming().status == existing().status)
+                && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'updatedAt'])
+              )
+              ||
+              // Legacy migration: existing user without role field safely assigned BUSINESS_OWNER
+              (
+                !('role' in existing())
+                && incoming().role == 'BUSINESS_OWNER'
+                && incoming().status == 'active'
+                && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'role', 'status', 'updatedAt'])
+              )
+              ||
+              // Bootstrapped admin upgrading their own user doc to SUPER_ADMIN after /admins/{uid} exists
+              (
+                isBootstrappedSuperAdminEmail()
+                && (
+                  exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+                  || existsAfter(/databases/$(database)/documents/admins/$(request.auth.uid))
+                )
+                && incoming().role == 'SUPER_ADMIN'
+                && incoming().status == 'active'
+                && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'status', 'displayName', 'updatedAt'])
+              )
+            )
+          )
+        );
+      allow delete: if false;
+    }
+
+    // Collection: /businesses/{businessId}
+    match /businesses/{businessId} {
+      allow get: if isSignedIn() && isValidId(businessId) && (
+        existing().ownerId == request.auth.uid
+        || isActiveBusinessMember(businessId)
+        || isSuperAdmin()
+      );
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isSuperAdmin());
+      allow create: if isVerifiedUser()
+        && isAccountActive()
+        && isValidId(businessId)
+        && isValidBusiness(incoming())
+        && incoming().ownerId == request.auth.uid
+        && incoming().status == 'active'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser()
+        && isValidId(businessId)
+        && isValidBusiness(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Platform Admin: activate or suspend business
+          (isSuperAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+          ||
+          // Business Owner: manage profile (and backfill active status on legacy records)
+          (
+            existing().ownerId == request.auth.uid
+            && isAccountActive()
+            && (
+              (
+                (!('status' in existing()) || existing().status == 'active')
+                && incoming().status == 'active'
+                && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'city', 'address', 'description', 'status', 'updatedAt'])
+              )
+              ||
+              (
+                ('status' in existing())
+                && existing().status == 'active'
+                && incoming().status == 'active'
+                && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'city', 'address', 'description', 'updatedAt'])
+              )
+            )
+          )
+        );
+      allow delete: if isVerifiedUser()
+        && isValidId(businessId)
+        && (existing().ownerId == request.auth.uid || isSuperAdmin());
+
+      // Subcollection: /businesses/{businessId}/reviews/{reviewId}
+      match /reviews/{reviewId} {
+        allow get: if isSignedIn()
+          && isValidId(businessId)
+          && isValidId(reviewId)
+          && hasTenantAccess(businessId);
+        allow list: if isSignedIn()
+          && isValidId(businessId)
+          && resource.data.businessId == businessId
+          && (
+            isParentBusinessOwner(businessId)
+            || isActiveBusinessMember(businessId)
+            || isSuperAdmin()
+          );
+        allow create: if isVerifiedUser()
+          && isAccountActive()
+          && isValidId(businessId)
+          && isValidId(reviewId)
+          && isBusinessActive(businessId)
+          && (isActiveBusinessOwner(businessId) || isActiveBusinessMember(businessId))
+          && isValidReview(incoming(), businessId)
+          && incoming().ownerId == get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isVerifiedUser()
+          && isAccountActive()
+          && isValidId(businessId)
+          && isValidId(reviewId)
+          && isBusinessActive(businessId)
+          && (isActiveBusinessOwner(businessId) || isActiveBusinessMember(businessId))
+          && isValidReview(incoming(), businessId)
+          && existing().responseStatus != 'published'
+          && existing().businessId == businessId
+          && existing().ownerId == get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId
+          && incoming().ownerId == existing().ownerId
+          && incoming().businessId == existing().businessId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            // Action 1: AI Sentiment & Draft Enrichment (Owner or Active Manager; cannot publish directly)
+            (
+              incoming().responseStatus in ['unanswered', 'drafted']
+              && incoming().publishedResponse == existing().publishedResponse
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'sentiment', 'sentimentScore', 'categories', 'isCritical',
+                'criticalReason', 'aiSummary', 'aiDraftResponse', 'responseTone',
+                'responseStatus', 'updatedAt'
+              ])
+            )
+            ||
+            // Action 2: Edit Draft without Approval (Owner or Active Manager)
+            (
+              incoming().responseStatus in ['unanswered', 'drafted']
+              && incoming().publishedResponse == ''
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'aiDraftResponse', 'responseTone', 'responseStatus',
+                'publishedResponse', 'updatedAt'
+              ])
+            )
+            ||
+            // Action 3: Approve/Publish or Reject Reply (Owner OR Manager with explicit canApproveReplies == true)
+            (
+              incoming().responseStatus in ['published', 'rejected']
+              && (isActiveBusinessOwner(businessId) || canManagerApproveReplies(businessId))
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'aiDraftResponse', 'responseTone', 'responseStatus',
+                'publishedResponse', 'updatedAt'
+              ])
+            )
+            ||
+            // Action 4: Edit Review Content (Owner only)
+            (
+              isActiveBusinessOwner(businessId)
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'authorName', 'rating', 'text', 'reviewDate', 'source', 'updatedAt'
+              ])
+            )
+          );
+        allow delete: if isVerifiedUser()
+          && isAccountActive()
+          && isValidId(businessId)
+          && isValidId(reviewId)
+          && isActiveBusinessOwner(businessId);
+      }
+    }
+
+    // Collection: /business_members/{membershipId}
+    // membershipId MUST equal {businessId}__{userId}
+    match /business_members/{membershipId} {
+      allow get: if isSignedIn()
+        && isValidId(membershipId)
+        && (
+          existing().userId == request.auth.uid
+          || existing().ownerId == request.auth.uid
+          || isSuperAdmin()
+        );
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid
+        || resource.data.ownerId == request.auth.uid
+        || isSuperAdmin()
+      );
+      allow create: if isVerifiedUser()
+        && isAccountActive()
+        && isValidId(membershipId)
+        && isValidBusinessMember(incoming())
+        && membershipId == (incoming().businessId + '__' + incoming().userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          (
+            exists(/databases/$(database)/documents/businesses/$(incoming().businessId))
+            && incoming().ownerId == get(/databases/$(database)/documents/businesses/$(incoming().businessId)).data.ownerId
+          )
+          || (
+            existsAfter(/databases/$(database)/documents/businesses/$(incoming().businessId))
+            && incoming().ownerId == getAfter(/databases/$(database)/documents/businesses/$(incoming().businessId)).data.ownerId
+          )
+        )
+        && (
+          // Business Owner registering their own owner membership record
+          (
+            incoming().ownerId == request.auth.uid
+            && incoming().userId == request.auth.uid
+            && incoming().role == 'BUSINESS_OWNER'
+            && incoming().canApproveReplies == true
+            && incoming().status == 'active'
+            && incoming().inviteId == 'owner'
+          )
+          ||
+          // Business Owner directly creating a staff membership (e.g. if userId is known)
+          (
+            incoming().ownerId == request.auth.uid
+            && incoming().role == 'BUSINESS_MANAGER'
+            && incoming().status == 'active'
+          )
+          ||
+          // Invited user accepting a valid pending invite for their verified email
+          (
+            incoming().userId == request.auth.uid
+            && incoming().role == 'BUSINESS_MANAGER'
+            && incoming().status == 'active'
+            && incoming().email == request.auth.token.email.lower()
+            && exists(/databases/$(database)/documents/business_invites/$(incoming().inviteId))
+            && get(/databases/$(database)/documents/business_invites/$(incoming().inviteId)).data.status == 'pending'
+            && get(/databases/$(database)/documents/business_invites/$(incoming().inviteId)).data.businessId == incoming().businessId
+            && get(/databases/$(database)/documents/business_invites/$(incoming().inviteId)).data.email == request.auth.token.email.lower()
+            && get(/databases/$(database)/documents/business_invites/$(incoming().inviteId)).data.canApproveReplies == incoming().canApproveReplies
+            && getAfter(/databases/$(database)/documents/business_invites/$(incoming().inviteId)).data.status == 'accepted'
+          )
+        );
+      allow update: if isVerifiedUser()
+        && isAccountActive()
+        && isValidId(membershipId)
+        && isValidBusinessMember(incoming())
+        && incoming().businessId == existing().businessId
+        && incoming().ownerId == existing().ownerId
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            existing().ownerId == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['canApproveReplies', 'status', 'updatedAt'])
+          )
+          || isSuperAdmin()
+        );
+      allow delete: if isVerifiedUser()
+        && isValidId(membershipId)
+        && (existing().ownerId == request.auth.uid || isSuperAdmin());
+    }
+
+    // Collection: /business_invites/{inviteId}
+    match /business_invites/{inviteId} {
+      allow get: if isSignedIn()
+        && isValidId(inviteId)
+        && (
+          existing().ownerId == request.auth.uid
+          || (isVerifiedUser() && existing().email == request.auth.token.email.lower())
+          || isSuperAdmin()
+        );
+      allow list: if isSignedIn() && (
+        resource.data.ownerId == request.auth.uid
+        || (isVerifiedUser() && resource.data.email == request.auth.token.email.lower())
+        || isSuperAdmin()
+      );
+      allow create: if isVerifiedUser()
+        && isAccountActive()
+        && isValidId(inviteId)
+        && isValidBusinessInvite(incoming())
+        && incoming().ownerId == request.auth.uid
+        && incoming().invitedBy == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isParentBusinessOwner(incoming().businessId);
+      allow update: if isVerifiedUser()
+        && isAccountActive()
+        && isValidId(inviteId)
+        && isValidBusinessInvite(incoming())
+        && incoming().businessId == existing().businessId
+        && incoming().ownerId == existing().ownerId
+        && incoming().email == existing().email
+        && incoming().invitedBy == existing().invitedBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Invited user accepting their pending invite atomically with business_members creation
+          (
+            existing().status == 'pending'
+            && incoming().status == 'accepted'
+            && existing().email == request.auth.token.email.lower()
+            && incoming().canApproveReplies == existing().canApproveReplies
+            && existsAfter(/databases/$(database)/documents/business_members/$(existing().businessId + '__' + request.auth.uid))
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+          ||
+          // Business Owner revoking or adjusting permissions
+          (
+            existing().ownerId == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['canApproveReplies', 'status', 'updatedAt'])
+          )
+        );
+      allow delete: if isVerifiedUser()
+        && isValidId(inviteId)
+        && (existing().ownerId == request.auth.uid || isSuperAdmin());
+    }
+  }
+}

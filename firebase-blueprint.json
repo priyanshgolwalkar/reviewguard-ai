@@ -1,0 +1,475 @@
+{
+  "entities": {
+    "PlatformAdmin": {
+      "title": "PlatformAdmin",
+      "description": "Trusted registry document designating an authenticated user as SUPER_ADMIN.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "provisionedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "provisionedBy", "createdAt"]
+    },
+    "PlatformSettings": {
+      "title": "PlatformSettings",
+      "description": "Platform-wide configuration managed solely by SUPER_ADMIN.",
+      "type": "object",
+      "properties": {
+        "platformName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "allowNewBusinessRegistration": {
+          "type": "boolean"
+        },
+        "maxBusinessesPerOwner": {
+          "type": "integer"
+        },
+        "aiAnalysisEnabled": {
+          "type": "boolean"
+        },
+        "maintenanceMode": {
+          "type": "boolean"
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "platformName",
+        "allowNewBusinessRegistration",
+        "maxBusinessesPerOwner",
+        "aiAnalysisEnabled",
+        "maintenanceMode",
+        "updatedBy",
+        "updatedAt"
+      ]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user account document with authoritative platform role and account status.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "enum": ["SUPER_ADMIN", "BUSINESS_OWNER", "BUSINESS_MANAGER"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "suspended"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "displayName", "role", "status", "createdAt", "updatedAt"]
+    },
+    "Business": {
+      "title": "Business",
+      "description": "Multi-tenant business workspace owned by a BUSINESS_OWNER and administered across the platform.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "category": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "city": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "address": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 240
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "suspended"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "category",
+        "city",
+        "address",
+        "description",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BusinessMember": {
+      "title": "BusinessMember",
+      "description": "Deterministic tenant membership record keyed by {businessId}__{userId}.",
+      "type": "object",
+      "properties": {
+        "businessId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "businessName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "enum": ["BUSINESS_OWNER", "BUSINESS_MANAGER"]
+        },
+        "canApproveReplies": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "revoked"]
+        },
+        "invitedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "inviteId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "businessId",
+        "businessName",
+        "ownerId",
+        "userId",
+        "email",
+        "displayName",
+        "role",
+        "canApproveReplies",
+        "status",
+        "invitedBy",
+        "inviteId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BusinessInvite": {
+      "title": "BusinessInvite",
+      "description": "Owner-issued staff invitation allowing an invited user to join a business as BUSINESS_MANAGER.",
+      "type": "object",
+      "properties": {
+        "businessId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "businessName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "role": {
+          "type": "string",
+          "enum": ["BUSINESS_MANAGER"]
+        },
+        "canApproveReplies": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "accepted", "revoked"]
+        },
+        "invitedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "businessId",
+        "businessName",
+        "ownerId",
+        "email",
+        "role",
+        "canApproveReplies",
+        "status",
+        "invitedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Customer review belonging to a business tenant, with AI sentiment and reply approval workflow.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "businessId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "rating": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "reviewDate": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 40
+        },
+        "source": {
+          "type": "string",
+          "enum": ["manual", "csv", "google", "yelp", "tripadvisor", "other"]
+        },
+        "sentiment": {
+          "type": "string",
+          "enum": ["positive", "neutral", "negative", "pending"]
+        },
+        "sentimentScore": {
+          "type": "number"
+        },
+        "categories": {
+          "type": "array"
+        },
+        "isCritical": {
+          "type": "boolean"
+        },
+        "criticalReason": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "aiSummary": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "aiDraftResponse": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "responseTone": {
+          "type": "string",
+          "enum": ["professional", "warm", "concise", "apologetic"]
+        },
+        "responseStatus": {
+          "type": "string",
+          "enum": ["unanswered", "drafted", "published", "rejected"]
+        },
+        "publishedResponse": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "businessId",
+        "authorName",
+        "rating",
+        "text",
+        "reviewDate",
+        "source",
+        "sentiment",
+        "sentimentScore",
+        "categories",
+        "isCritical",
+        "criticalReason",
+        "aiSummary",
+        "aiDraftResponse",
+        "responseTone",
+        "responseStatus",
+        "publishedResponse",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/admins/{userId}": {
+      "schema": {
+        "$ref": "#/entities/PlatformAdmin"
+      },
+      "description": "Trusted registry of SUPER_ADMIN platform administrators."
+    },
+    "/platform_settings/{settingId}": {
+      "schema": {
+        "$ref": "#/entities/PlatformSettings"
+      },
+      "description": "Platform-wide configuration settings managed by SUPER_ADMIN."
+    },
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Private user account documents with role and active/suspended status."
+    },
+    "/businesses/{businessId}": {
+      "schema": {
+        "$ref": "#/entities/Business"
+      },
+      "description": "Multi-tenant business workspaces."
+    },
+    "/business_members/{membershipId}": {
+      "schema": {
+        "$ref": "#/entities/BusinessMember"
+      },
+      "description": "Tenant memberships keyed by {businessId}__{userId} linking owners and managers to businesses."
+    },
+    "/business_invites/{inviteId}": {
+      "schema": {
+        "$ref": "#/entities/BusinessInvite"
+      },
+      "description": "Pending and accepted staff invitations issued by business owners."
+    },
+    "/businesses/{businessId}/reviews/{reviewId}": {
+      "schema": {
+        "$ref": "#/entities/Review"
+      },
+      "description": "Customer reviews scoped strictly to a business tenant."
+    }
+  }
+}
